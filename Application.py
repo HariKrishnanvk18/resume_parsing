@@ -21,10 +21,24 @@ load_dotenv()
 
 st.set_page_config(page_title="TalentSift AI", layout="wide", page_icon="🎯")
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
-ALLOWED_IDS = os.getenv("TS_ALLOWED_IDS", "").split(",")
-GLOBAL_PASSWORD = os.getenv("TS_GLOBAL_PASSWORD", "default_pass")
+ALLOWED_IDS = st.secrets["TS_ALLOWED_IDS"].split(",")
+GLOBAL_PASSWORD = st.secrets["TS_GLOBAL_PASSWORD"]
+
+def get_db_connection():
+    try:
+        return mysql.connector.connect(
+            host=st.secrets["DB_HOST"],
+            port=st.secrets["DB_PORT"],
+            user=st.secrets["DB_USER"],
+            password=st.secrets["DB_PASSWORD"],
+            database=st.secrets["DB_NAME"],
+            ssl_disabled=False # Aiven-ku idhu mukkiam
+        )
+    except Exception as e:
+        st.error(f"Database Connection Error: {e}")
+        return None
 
 PAGE_CSS = """
 <style>
@@ -158,6 +172,7 @@ JD: {jd[:400]} | Resume: {resume[:500]}
 # =====================================================
 def fetch_drive_file(filename):
     try:
+        # Step 1: Local path-ku bathilaa Secrets-la irundhu info-vai edukkuroam
         service_account_info = st.secrets["gcp_service_account"]
         
         creds = service_account.Credentials.from_service_account_info(
@@ -165,8 +180,10 @@ def fetch_drive_file(filename):
             scopes=['https://www.googleapis.com/auth/drive.readonly']
         )
         
+        # Step 2: Drive API service-ai build pannuvom
         service = build('drive', 'v3', credentials=creds)
         
+        # Step 3: Filename-ai vachu file-ai theduvoam
         res = service.files().list(
             q=f"name='{filename}' and trashed=false",
             fields="files(id)"
@@ -176,6 +193,7 @@ def fetch_drive_file(filename):
         if not files: 
             return None
             
+        # Step 4: File data-vai download pannuvom
         req = service.files().get_media(fileId=files[0]['id'])
         fh = io.BytesIO()
         downloader = MediaIoBaseDownload(fh, req)
@@ -187,6 +205,7 @@ def fetch_drive_file(filename):
         return fh.getvalue()
         
     except Exception as e:
+        # Cloud-la print aagurathai vida st.error-la kaattunaal useful-aa irukkum
         st.error(f"Drive error: {e}")
         return None
 
@@ -199,16 +218,14 @@ def delete_dialog(cand_id, cand_name):
     c1, c2 = st.columns(2)
     with c1:
         if st.button("Confirm"):
-            db = mysql.connector.connect(
-                host="localhost", user="root",
-                password=os.getenv("DB_PASSWORD"),
-                database="drive_to_sql_v2"
-            )
-            curr = db.cursor()
-            curr.execute("UPDATE users SET is_active = 0 WHERE id = %s", (cand_id,))
-            db.commit(); db.close()
-            st.cache_data.clear()
-            st.rerun()
+            # Use our cloud connection function instead of localhost
+            db = get_db_connection() 
+            if db:
+                curr = db.cursor()
+                curr.execute("UPDATE users SET is_active = 0 WHERE id = %s", (cand_id,))
+                db.commit(); db.close()
+                st.cache_data.clear()
+                st.rerun()
     with c2:
         if st.button("No"): st.rerun()
 
@@ -397,11 +414,9 @@ if st.button("🚀 Find & Rank Perfect Matches", use_container_width=True):
                 else:
                     skill_condition = "AND 1=1"
                 
-                db = mysql.connector.connect(
-                    host="localhost", user="root",
-                    password=os.getenv("DB_PASSWORD"),
-                    database="drive_to_sql_v2"
-                )
+                # --- CLOUD CONNECTION FIX ---
+                db = get_db_connection()
+                
                 sql_query = f"""
                     SELECT * FROM users
                     WHERE experience >= {final_min_exp}
@@ -410,8 +425,13 @@ if st.button("🚀 Find & Rank Perfect Matches", use_container_width=True):
                     {skill_condition}
                     AND is_active = 1
                 """
-                df = pd.read_sql(sql_query, db)
-                db.close()
+                
+                if db:
+                    df = pd.read_sql(sql_query, db)
+                    db.close()
+                else:
+                    df = pd.DataFrame() 
+                # ----------------------------
 
                 if not df.empty:
                     # Semantic scoring
