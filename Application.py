@@ -158,26 +158,36 @@ JD: {jd[:400]} | Resume: {resume[:500]}
 # =====================================================
 def fetch_drive_file(filename):
     try:
-        creds = service_account.Credentials.from_service_account_file(
-            r'C:\Users\LENOVO\OneDrive\Desktop\resume_parser\service_account.json',
+        service_account_info = st.secrets["gcp_service_account"]
+        
+        creds = service_account.Credentials.from_service_account_info(
+            service_account_info,
             scopes=['https://www.googleapis.com/auth/drive.readonly']
         )
+        
         service = build('drive', 'v3', credentials=creds)
+        
         res = service.files().list(
             q=f"name='{filename}' and trashed=false",
             fields="files(id)"
         ).execute()
+        
         files = res.get('files', [])
-        if not files: return None
+        if not files: 
+            return None
+            
         req = service.files().get_media(fileId=files[0]['id'])
         fh = io.BytesIO()
         downloader = MediaIoBaseDownload(fh, req)
+        
         done = False
         while not done:
             _, done = downloader.next_chunk()
+            
         return fh.getvalue()
+        
     except Exception as e:
-        print(f"Drive error: {e}")
+        st.error(f"Drive error: {e}")
         return None
 
 # =====================================================
