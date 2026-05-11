@@ -34,7 +34,8 @@ def get_db_connection():
             user=st.secrets["DB_USER"],
             password=st.secrets["DB_PASSWORD"],
             database=st.secrets["DB_NAME"],
-            ssl_disabled=False # Aiven-ku idhu mukkiam
+            ssl_ca=None, 
+            ssl_verify_cert=False 
         )
     except Exception as e:
         st.error(f"Database Connection Error: {e}")
@@ -378,6 +379,17 @@ with col_sub2:
 
 # --- SEARCH BUTTON ---
 if st.button("🚀 Find & Rank Perfect Matches", use_container_width=True):
+
+    db_test = get_db_connection()
+    if db_test:
+        cursor_test = db_test.cursor()
+        cursor_test.execute("SELECT COUNT(*) FROM users")
+        count = cursor_test.fetchone()[0]
+        st.write(f"📢 **App Connection Success!** Total Records in DB: {count}")
+        db_test.close()
+    else:
+        st.error("❌ **App Connection Failed!** Database-oda connect panna mudiyaala.")
+
     if jd_area_input:
         st.session_state.jd_input_value = jd_area_input
         with st.spinner("Analyzing & Ranking... 🧠⚡"):
