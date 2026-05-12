@@ -154,11 +154,12 @@ JD: {jd[:400]} | Resume: {resume[:500]}
     return response.choices[0].message.content
 
 # =====================================================
-# DRIVE FETCH
+# DRIVE FETCH — Local JSON Version
 # =====================================================
 def fetch_drive_file(filename):
     try:
-        service_account_info = st.secrets["gcp_service_account"]
+        with open("service_account.json") as f:
+            service_account_info = json.load(f)
         
         creds = service_account.Credentials.from_service_account_info(
             service_account_info,
@@ -189,7 +190,6 @@ def fetch_drive_file(filename):
     except Exception as e:
         st.error(f"Drive error: {e}")
         return None
-
 # =====================================================
 # DIALOGS
 # =====================================================
